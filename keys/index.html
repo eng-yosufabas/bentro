@@ -37,11 +37,11 @@
   .card h2 { font-size: 17px; margin: 0 0 4px; }
   .hint { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
   label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 6px; }
-  input {
+  input, select {
     width: 100%; font: inherit; color: inherit; background: var(--field); border: 1.5px solid var(--line);
     border-radius: 14px; padding: 13px 14px; outline: none;
   }
-  input:focus { border-color: var(--brand); }
+  input:focus, select:focus { border-color: var(--brand); }
   input.code { direction: ltr; text-align: center; font-size: 19px; letter-spacing: 1px; padding-inline: 8px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; text-transform: uppercase; }
   input.token { direction: ltr; font-family: ui-monospace, Consolas, monospace; font-size: 14px; }
   .err { color: var(--bad); font-size: 14px; min-height: 20px; margin-top: 6px; }
@@ -105,6 +105,23 @@
     <div class="err" id="codeErr"></div>
     <label for="note">لمين؟ <span style="color:var(--muted);font-weight:400">(اسم المحل)</span></label>
     <input id="note" autocomplete="off" maxlength="80" placeholder="مثلاً: محل الأمل - غزة">
+    <!-- The same names as issue_key.py (bentro-keys) and Zentro Keys' issue.php -->
+    <label for="period">المدة</label>
+    <select id="period">
+      <option value="permanent">دائم</option>
+      <optgroup label="تجربة">
+        <option value="trial-1">تجربة يوم واحد</option>
+        <option value="trial-3">تجربة 3 أيام</option>
+        <option value="trial-7">تجربة أسبوع</option>
+        <option value="trial-14">تجربة أسبوعين</option>
+      </optgroup>
+      <optgroup label="اشتراك">
+        <option value="month-1">اشتراك شهر</option>
+        <option value="month-3">اشتراك 3 شهور</option>
+        <option value="month-6">اشتراك 6 شهور</option>
+        <option value="year-1">اشتراك سنة</option>
+      </optgroup>
+    </select>
     <button id="issue">اطلع المفتاح</button>
     <button class="link" id="changeToken">تغيير الرمز (token)</button>
   </section>
@@ -239,6 +256,8 @@
     const code = normalize($("code").value);
     if (!code) { $("codeErr").textContent = "كود الجهاز لازم يكون 16 حرف، متل اللي بشاشة التفعيل."; return; }
     const note = $("note").value.trim().slice(0, 80);
+    const period = $("period").value;
+    const periodName = $("period").selectedOptions[0].textContent;
     const requestId = "page-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
     $("workTitle").textContent = "عم يطلع المفتاح…";
     $("workHint").textContent = "بياخد حوالي نص دقيقة. خلّي الصفحة مفتوحة.";
@@ -247,7 +266,7 @@
     try {
       const sent = await gh(`/repos/${OWNER}/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
         method: "POST",
-        body: JSON.stringify({ ref: "main", inputs: { machine_code: pretty(code), note, request_id: requestId } }),
+        body: JSON.stringify({ ref: "main", inputs: { machine_code: pretty(code), note, period, request_id: requestId } }),
       });
       if (sent.status === 401) { storeToken(""); return fail("الرمز (token) انتهى أو انلغى. احفظ رمز جديد."); }
       if (sent.status !== 204) return fail("GitHub رفض الطلب (" + sent.status + "). تأكد من صلاحيات الرمز: Actions = Read and write.");
@@ -282,7 +301,9 @@
           const line = rows.find((r) => r[at("request_id")] === requestId);
           if (line) {
             $("key").textContent = line[at("key")];
-            $("keyMeta").textContent = "كود الجهاز " + line[at("machine_code")] + (note ? " · " + note : "");
+            const until = at("until") >= 0 ? (line[at("until")] || "").split(" ")[0] : "";
+            const ends = /^\d{4}-\d{2}-\d{2}$/.test(until) ? periodName + " لحد " + until : periodName;
+            $("keyMeta").textContent = "كود الجهاز " + line[at("machine_code")] + " · " + ends + (note ? " · " + note : "");
             return show("result");
           }
         }
@@ -305,7 +326,7 @@
     if (navigator.share) navigator.share({ text }).catch(() => {});
     else $("copy").click();
   };
-  $("again").onclick = () => { $("code").value = ""; $("note").value = ""; show("form"); $("code").focus(); };
+  $("again").onclick = () => { $("code").value = ""; $("note").value = ""; $("period").value = "permanent"; show("form"); $("code").focus(); };
   $("back").onclick = () => show(storedToken() ? "form" : "setup");
   if (!navigator.share) $("share").hidden = true;
 
